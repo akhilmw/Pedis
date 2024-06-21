@@ -1,6 +1,9 @@
 import socket
 import asyncio
 
+storedKeys = {}
+
+
 
 async def handle_client(reader, writer):
     addr = writer.get_extra_info('peername')
@@ -20,6 +23,27 @@ async def handle_client(reader, writer):
                     response = f"${len(response_data)}\r\n{response_data}\r\n".encode()
                     writer.write(response)
                     await writer.drain()
+                # FOR GET
+                elif parts[2].upper() == "GET":
+                    key = parts[4]
+                    if key in storedKeys:
+                        value = storedKeys[key]
+                        response = f"${len(value)}\r\n{value}\r\n".encode()
+                    else:
+                        response = b"$-1\r\n"
+                    writer.write(response)
+                    await writer.drain()
+            # For SET
+            elif data.startswith("*3"):
+                parts = data.split("\r\n")
+                if parts[2].upper() == "SET":
+                    key = parts[4]
+                    value = parts[6]
+                    if key not in storedKeys:
+                        storedKeys[key] = value
+                        response = f"OK\r\n".encode()
+                        writer.write(response)
+                        await writer.drain()
             elif "ping" in data.lower():
                 response = b"+PONG\r\n"
                 writer.write(response)

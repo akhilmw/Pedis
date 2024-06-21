@@ -27,4 +27,15 @@ wait
 
 '''
     echo -ne '*2\r\n$4\r\nECHO\r\n$3\r\nhey\r\n' | nc localhost 6379
+    
 '''
+
+# Test for Set and Get
+
+''' 
+    echo -ne *3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n | nc localhost 6379
+
+    *2\r\n$3\r\nGET\r\n$3\r\nfoo\r\n
+
+'''
+
