@@ -1,36 +1,51 @@
 import socket
-import concurrent.futures
-
-def handleClient(client_socket):
-    with client_socket:
-
-        while True:
-
-            request : bytes = client_socket.recv(1024)
-            data : str = request.decode()
-            
-            if "ping" in data.lower():
-                response = b"+PONG\r\n"
-                client_socket.sendall(response)
+import asyncio
 
 
-def main():
-
-    server_socket = socket.create_server(("localhost", 6379), reuse_port= True)
-    pool = concurrent.futures.ThreadPoolExecutor(max_workers=10)
+async def handle_client(reader, writer):
+    addr = writer.get_extra_info('peername')
+    print(f"Accepted connection from {addr}")
 
     try:
         while True:
-            client_socket, addr = server_socket.accept()
-            pool.submit(handleClient, client_socket)
-    except KeyboardInterrupt:
+            data = await reader.read(1024)
+            if not data:
+                break
+            message = data.decode()
+            if "ping" in message.lower():
+                response = b"+PONG\r\n"
+                writer.write(response)
+                await writer.drain()
+    
+    except asyncio.CancelledError:
+        print(f"Connection with {addr} was cancelled")
+    except Exception as e:
+        print(f"Exception occurred with {addr}: {e}")
+
+    print(f"Closing connection with {addr}")
+    writer.close()
+
+
+async def main():
+
+    server = await asyncio.start_server(handle_client, 'localhost', 6379)
+    addr = server.sockets[0].getsockname()
+    print(f'Serving on {addr}')
+
+    try:
+        async with server:
+            await server.serve_forever()
+    except asyncio.CancelledError:
         print("Server is shutting down...")
     finally:
-        pool.shutdown(wait=True)
-        server_socket.close()
+        server.close()
+        await server.wait_closed()
 
 
 
 if __name__  == "__main__":
 
-    main()
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("KeyboardInterrupt: shutting down...")
