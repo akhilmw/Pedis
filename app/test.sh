@@ -23,3 +23,8 @@ wait
 
 '''
 
+# Test for custom Echo
+
+'''
+    echo -ne '*2\r\n$4\r\nECHO\r\n$3\r\nhey\r\n' | nc localhost 6379
+'''

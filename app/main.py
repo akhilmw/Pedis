@@ -8,11 +8,19 @@ async def handle_client(reader, writer):
 
     try:
         while True:
-            data = await reader.read(1024)
-            if not data:
+            request = await reader.read(1024)
+            if not request:
                 break
-            message = data.decode()
-            if "ping" in message.lower():
+            data = request.decode().strip()
+            # RESP protocol handling
+            if data.startswith("*2"):
+                parts = data.split("\r\n")
+                if parts[2].upper() == "ECHO" and parts[4]:
+                    response_data = parts[4]
+                    response = f"${len(response_data)}\r\n{response_data}\r\n".encode()
+                    writer.write(response)
+                    await writer.drain()
+            elif "ping" in data.lower():
                 response = b"+PONG\r\n"
                 writer.write(response)
                 await writer.drain()
