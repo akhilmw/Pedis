@@ -1,8 +1,9 @@
 import socket
 import asyncio
+import time
 
-storedKeys = {}
-
+storage = {}
+expiration_store = {}
 
 
 async def handle_client(reader, writer):
@@ -16,39 +17,48 @@ async def handle_client(reader, writer):
                 break
             data = request.decode().strip()
             # RESP protocol handling
-            if data.startswith("*2"):
-                parts = data.split("\r\n")
-                if parts[2].upper() == "ECHO" and parts[4]:
-                    response_data = parts[4]
-                    response = f"${len(response_data)}\r\n{response_data}\r\n".encode()
+            parts = data.split("\r\n")
+            if parts[0].startswith("*"):
+                array_len = int(parts[0][1:])
+                if array_len == 1 and parts[2].upper() == "PING":
+                    response = b"+PONG\r\n"
                     writer.write(response)
                     await writer.drain()
-                # FOR GET
-                elif parts[2].upper() == "GET":
-                    key = parts[4]
-                    if key in storedKeys:
-                        value = storedKeys[key]
-                        response = f"${len(value)}\r\n{value}\r\n".encode()
-                    else:
-                        response = b"$-1\r\n"
-                    writer.write(response)
-                    await writer.drain()
-            # For SET
-            elif data.startswith("*3"):
-                parts = data.split("\r\n")
-                if parts[2].upper() == "SET":
-                    key = parts[4]
-                    value = parts[6]
-                    if key not in storedKeys:
-                        storedKeys[key] = value
-                        response = f"OK\r\n".encode()
+                elif array_len >= 3:
+                    if parts[2].upper() == "SET" and len(parts) >= 7:
+                        key = parts[4]
+                        value = parts[6]
+                        if len(parts) >= 10 and parts[8].upper() == "PX":
+                            expire_time = int(parts[10])
+                            expiration_store[key] = time.time() + expire_time / 1000.0
+                        storage[key] = value
+                        response = b"+OK\r\n"
                         writer.write(response)
                         await writer.drain()
-            elif "ping" in data.lower():
-                response = b"+PONG\r\n"
-                writer.write(response)
-                await writer.drain()
-    
+                elif array_len == 2 and parts[2].upper() == "GET":
+                    key = parts[4]
+                    if key in expiration_store:
+                        if time.time() > expiration_store[key]:
+                            del storage[key]
+                            del expiration_store[key]
+                            value = None
+                        else:
+                            value = storage.get(key, None)
+                    else:
+                        value = storage.get(key, None)
+
+                    if value is None:
+                        response = b"$-1\r\n"
+                    else:
+                        response = f"${len(value)}\r\n{value}\r\n".encode()
+                    writer.write(response)
+                    await writer.drain()
+                elif array_len == 2 and parts[2].upper() == "ECHO":
+                    message = parts[4]
+                    response = f"${len(message)}\r\n{message}\r\n".encode()
+                    writer.write(response)
+                    await writer.drain()
+                
     except asyncio.CancelledError:
         print(f"Connection with {addr} was cancelled")
     except Exception as e:
