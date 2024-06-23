@@ -1,10 +1,24 @@
-import socket
 import asyncio
 import time
+import argparse
 
 storage = {}
 expiration_store = {}
+slaves = []
 
+def parse_args():
+    parser = argparse.ArgumentParser(description='Redis server with custom port and replication support.')
+    parser.add_argument('--port', type=int, default=6379, help='Port number to run the server on (default: 6379)')
+    parser.add_argument('--replicaof', metavar='<MASTER_HOST> <MASTER_PORT>', type=str, nargs=1, help='Make the server a replica of another Redis server')
+    return parser.parse_args()
+
+async def connect_to_master(master_host, master_port):
+    reader, writer = await asyncio.open_connection(master_host, master_port)
+    ping_command = "*1\r\n$4\r\nPING\r\n".encode()
+    writer.write(ping_command)
+    await writer.drain()
+    writer.close()
+    await writer.wait_closed()
 
 async def handle_client(reader, writer):
     addr = writer.get_extra_info('peername')
@@ -16,6 +30,7 @@ async def handle_client(reader, writer):
             if not request:
                 break
             data = request.decode().strip()
+            print(f"Received data: {data}")
             # RESP protocol handling
             parts = data.split("\r\n")
             if parts[0].startswith("*"):
@@ -58,7 +73,14 @@ async def handle_client(reader, writer):
                     response = f"${len(message)}\r\n{message}\r\n".encode()
                     writer.write(response)
                     await writer.drain()
-                
+                elif array_len == 2 and parts[2].upper() == "INFO" and parts[4].upper() == "REPLICATION":
+                    if not slaves:
+                        response = b"$89\r\nrole:master\r\nmaster_replid:8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb\r\nmaster_repl_offset:0\r\n"
+                    else:
+                        response = b"$10\r\nrole:slave\r\n"
+                    writer.write(response)
+                    await writer.drain()
+            
     except asyncio.CancelledError:
         print(f"Connection with {addr} was cancelled")
     except Exception as e:
@@ -68,9 +90,11 @@ async def handle_client(reader, writer):
     writer.close()
 
 
-async def main():
-
-    server = await asyncio.start_server(handle_client, 'localhost', 6379)
+async def main(port, master_host=None, master_port=None):
+    if master_host and master_port:
+        await connect_to_master(master_host, master_port)
+    
+    server = await asyncio.start_server(handle_client, 'localhost', port)
     addr = server.sockets[0].getsockname()
     print(f'Serving on {addr}')
 
@@ -83,11 +107,20 @@ async def main():
         server.close()
         await server.wait_closed()
 
-
-
-if __name__  == "__main__":
-
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("KeyboardInterrupt: shutting down...")
+if __name__ == "__main__":
+    args = parse_args()
+    print(args)
+    
+    if args.replicaof:
+        master_host, master_port = args.replicaof[0].split()
+        master_port = int(master_port)  # Ensure master_port is an integer
+        slaves.append(f"{master_host}:{master_port}")
+        try:
+            asyncio.run(main(args.port, master_host, master_port))
+        except KeyboardInterrupt:
+            print("KeyboardInterrupt: shutting down...")
+    else:
+        try:
+            asyncio.run(main(args.port))
+        except KeyboardInterrupt:
+            print("KeyboardInterrupt: shutting down...")

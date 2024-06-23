@@ -47,3 +47,41 @@ wait
     
 '''
 
+# Test for running on a custom port
+
+'''
+    python3 main.py --port "port" (give the desired port number)
+
+'''
+
+# To test the INFO replication command:
+
+'''
+    echo -ne '*2\r\n$4\r\nINFO\r\n$11\r\nREPLICATION\r\n' | nc localhost <PORT>
+
+'''
+
+# Test The INFO command on a replica:
+
+'''
+
+    eg: python3 main.py --port 6380 --replicaof "localhost 6379" 
+    echo -ne '*2\r\n$4\r\nINFO\r\n$11\r\nREPLICATION\r\n' | nc localhost 6380
+
+'''
+
+# TEST for offer and replica ID:
+
+'''
+    python3 main.py
+    echo -ne '*2\r\n$4\r\nINFO\r\n$11\r\nREPLICATION\r\n' | nc localhost 6379
+'''
+
+# TEST for handshake 1
+
+'''
+    python3 main.py --port 6379
+    python3 main.py --port 6380 --replicaof "localhost 6379"
+
+'''
+
