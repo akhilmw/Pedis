@@ -83,6 +83,14 @@ async def handle_client(reader, writer):
                         response = b"+OK\r\n"
                         writer.write(response)
                         await writer.drain()
+                    elif parts[2].upper() == "PSYNC":
+                        if parts[4] and parts[6]:
+                            replication_id = parts[4]
+                            offset = parts[6]
+                        response = b"+FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0\r\n"
+                        writer.write(response)
+                        await writer.drain()
+
                 elif array_len == 2 and parts[2].upper() == "GET":
                     key = parts[4]
                     if key in expiration_store:
