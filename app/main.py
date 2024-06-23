@@ -12,11 +12,36 @@ def parse_args():
     parser.add_argument('--replicaof', metavar='<MASTER_HOST> <MASTER_PORT>', type=str, nargs=1, help='Make the server a replica of another Redis server')
     return parser.parse_args()
 
-async def connect_to_master(master_host, master_port):
+async def connect_to_master(master_host, master_port, slave_port):
     reader, writer = await asyncio.open_connection(master_host, master_port)
     ping_command = "*1\r\n$4\r\nPING\r\n".encode()
     writer.write(ping_command)
     await writer.drain()
+    response = await reader.read(100)
+    if response != b"+PONG\r\n":
+    #logging.error(f"Unexpected response to PING: {response}")
+        return
+    # Send REPLCONF listening-port command as RESP array
+    replconf_listening_port_message = f"*3\r\n$8\r\nREPLCONF\r\n$14\r\nlistening-port\r\n${len(str(slave_port))}\r\n{slave_port}\r\n"
+    writer.write(replconf_listening_port_message.encode("utf-8"))
+    await writer.drain()
+    # Wait for REPLCONF response
+    response = await reader.read(100)
+    if response != b"+OK\r\n":
+        #logging.error(f"Unexpected response to REPLCONF listening-port: {response}")
+        return
+    # Send REPLCONF capa psync2 command as RESP array
+    replconf_capa_message = "*3\r\n$8\r\nREPLCONF\r\n$4\r\ncapa\r\n$6\r\npsync2\r\n"
+    writer.write(replconf_capa_message.encode("utf-8"))
+    await writer.drain()
+    # Wait for REPLCONF response
+    response = await reader.read(100)
+    if response != b"+OK\r\n":
+        #logging.error(f"Unexpected response to REPLCONF capa: {response}")
+        return
+    
+
+    
     writer.close()
     await writer.wait_closed()
 
@@ -92,7 +117,7 @@ async def handle_client(reader, writer):
 
 async def main(port, master_host=None, master_port=None):
     if master_host and master_port:
-        await connect_to_master(master_host, master_port)
+        await connect_to_master(master_host, master_port, port)
     
     server = await asyncio.start_server(handle_client, 'localhost', port)
     addr = server.sockets[0].getsockname()
