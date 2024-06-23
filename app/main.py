@@ -39,6 +39,10 @@ async def connect_to_master(master_host, master_port, slave_port):
     if response != b"+OK\r\n":
         #logging.error(f"Unexpected response to REPLCONF capa: {response}")
         return
+
+    psync_command = "*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n".encode()
+    writer.write(psync_command)
+    await writer.drain()
     
 
     
