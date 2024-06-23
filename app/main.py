@@ -79,6 +79,10 @@ async def handle_client(reader, writer):
                         response = b"+OK\r\n"
                         writer.write(response)
                         await writer.drain()
+                    elif parts[2].upper() == "REPLCONF":
+                        response = b"+OK\r\n"
+                        writer.write(response)
+                        await writer.drain()
                 elif array_len == 2 and parts[2].upper() == "GET":
                     key = parts[4]
                     if key in expiration_store:
