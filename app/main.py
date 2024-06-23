@@ -1,10 +1,26 @@
 import asyncio
 import time
 import argparse
+import base64
+
+
 
 storage = {}
 expiration_store = {}
 slaves = []
+
+def decode_hex(hex_data):
+    return bytes.fromhex(hex_data)
+
+def decode_base64(base64_data):
+    return base64.b64decode(base64_data)
+
+hex_rdb = "524544495330303131fa0972656469732d76657205372e322e30fa0a72656469732d62697473c040fa056374696d65c26d08bc65fa08757365642d6d656dc2b0c41000fa08616f662d62617365c000fff06e3bfec0ff5aa2"
+base64_rdb = "UkVESVMwMDEx+glyZWRpcy12ZXIFNy4yLjD6CnJlZGlzLWJpdHPAQPoFY3RpbWXCbQi8ZfoIdXNlZC1tZW3CsMQQAPoIYW9mLWJhc2XAAP/wbjv+wP9aog=="
+binary_rdb_hex = decode_hex(hex_rdb)
+binary_rdb_base64 = decode_base64(base64_rdb)
+
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Redis server with custom port and replication support.')
@@ -90,6 +106,12 @@ async def handle_client(reader, writer):
                         response = b"+FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0\r\n"
                         writer.write(response)
                         await writer.drain()
+                        rdb_length = len(binary_rdb_base64)
+                        rdb_header = f"${rdb_length}\r\n".encode()
+                        writer.write(rdb_header)
+                        writer.write(binary_rdb_base64)
+                        await writer.drain()
+
 
                 elif array_len == 2 and parts[2].upper() == "GET":
                     key = parts[4]
