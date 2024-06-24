@@ -9,6 +9,8 @@ storage = {}
 expiration_store = {}
 slaves = []
 
+replica_writers = []
+
 def decode_hex(hex_data):
     return bytes.fromhex(hex_data)
 
@@ -27,6 +29,17 @@ def parse_args():
     parser.add_argument('--port', type=int, default=6379, help='Port number to run the server on (default: 6379)')
     parser.add_argument('--replicaof', metavar='<MASTER_HOST> <MASTER_PORT>', type=str, nargs=1, help='Make the server a replica of another Redis server')
     return parser.parse_args()
+
+async def propagate_to_replica(command, *args):
+    command_array = f"*{len(args) + 1}\r\n${len(command)}\r\n{command}\r\n"
+    for arg in args:
+        command_array += f"${len(arg)}\r\n{arg}\r\n"
+    for replica_writer in replica_writers:
+        try:
+            replica_writer.write(command_array.encode())
+            await replica_writer.drain()
+        except Exception as e:
+            print(f"Error while propagating command to replica: {e}")
 
 async def connect_to_master(master_host, master_port, slave_port):
     reader, writer = await asyncio.open_connection(master_host, master_port)
@@ -93,13 +106,18 @@ async def handle_client(reader, writer):
                             expiration_store[key] = time.time() + expire_time / 1000.0
                         storage[key] = value
                         response = b"+OK\r\n"
+                        print(replica_writers)
                         writer.write(response)
                         await writer.drain()
+                        await propagate_to_replica("SET", key, value)
+
+                       
                     elif parts[2].upper() == "REPLCONF":
                         response = b"+OK\r\n"
                         writer.write(response)
                         await writer.drain()
                     elif parts[2].upper() == "PSYNC":
+                        replica_writers.append(writer)
                         if parts[4] and parts[6]:
                             replication_id = parts[4]
                             offset = parts[6]
